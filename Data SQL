@@ -1,0 +1,123 @@
+-- =============================================
+-- 1. SETUP VARIABLES TO STORE IDs (Để liên kết khóa ngoại)
+-- =============================================
+DECLARE @UserId_Admin uniqueidentifier = NEWID();
+DECLARE @UserId_Warehouse uniqueidentifier = NEWID();
+DECLARE @UserId_Maint uniqueidentifier = NEWID();
+
+DECLARE @Wh_Main uniqueidentifier = NEWID();
+DECLARE @Wh_Outdoor uniqueidentifier = NEWID();
+DECLARE @Loc_Silo uniqueidentifier = NEWID();
+DECLARE @Loc_Yard_Risk uniqueidentifier = NEWID();
+DECLARE @Loc_Production uniqueidentifier = NEWID();
+
+DECLARE @Prod_Clinker uniqueidentifier = NEWID();
+DECLARE @Prod_Gypsum uniqueidentifier = NEWID();
+DECLARE @Prod_Cement40 uniqueidentifier = NEWID();
+DECLARE @Prod_Bag uniqueidentifier = NEWID();
+
+DECLARE @Supp_Minerals uniqueidentifier = NEWID();
+DECLARE @Bom_Cement uniqueidentifier = NEWID();
+DECLARE @Equip_Conveyor uniqueidentifier = NEWID();
+DECLARE @Sensor_Humid uniqueidentifier = NEWID();
+DECLARE @Proj_Flood uniqueidentifier = NEWID();
+
+-- =============================================
+-- 2. INSERT MASTER DATA (Dữ liệu chủ)
+-- =============================================
+
+-- --- Users (Nhân viên) ---
+INSERT INTO users (user_id, username, full_name, email, role) VALUES
+(@UserId_Admin, 'admin', N'Nguyễn Quản Trị', 'admin@toanyen.com', 'Admin'),
+(@UserId_Warehouse, 'wh_staff', N'Trần Thủ Kho', 'kho@toanyen.com', 'WarehouseManager'),
+(@UserId_Maint, 'maint_staff', N'Lê Bảo Trì', 'baotri@toanyen.com', 'Maintenance');
+
+-- --- Warehouses (Kho bãi) ---
+INSERT INTO warehouses (warehouse_id, name, address, capacity_tons, is_outdoor) VALUES
+(@Wh_Main, N'Nhà Máy Chính (Vùng An Toàn)', N'Khu A - Cao ráo', 50000, 0),
+(@Wh_Outdoor, N'Bãi Tập Kết (Vùng Trũng)', N'Khu B - Gần sông', 20000, 1);
+
+-- --- Locations (Vị trí chi tiết) ---
+INSERT INTO locations (location_id, warehouse_id, code, description, capacity_tons) VALUES
+(@Loc_Silo, @Wh_Main, 'SILO-01', N'Silo chứa Clinker khô ráo', 10000),
+(@Loc_Production, @Wh_Main, 'PROD-LINE-1', N'Dây chuyền nghiền xi măng', 500),
+(@Loc_Yard_Risk, @Wh_Outdoor, 'YARD-B-FLOOD', N'Bãi chứa nguyên liệu ngoài trời (Nguy cơ ngập)', 5000);
+
+-- --- Products (Sản phẩm) ---
+INSERT INTO products (product_id, sku, name, uom, is_raw_material, default_reorder_qty) VALUES
+(@Prod_Clinker, 'RAW-CLINKER', N'Clinker (Nguyên liệu chính)', 'TON', 1, 500),
+(@Prod_Gypsum, 'RAW-GYPSUM', N'Thạch cao (Phụ gia)', 'TON', 1, 100),
+(@Prod_Cement40, 'FG-PCB40', N'Xi măng PCB40 (Thành phẩm)', 'TON', 0, 0),
+(@Prod_Bag, 'PKG-BAG50', N'Vỏ bao xi măng 50kg', 'PCS', 0, 10000);
+
+-- --- Suppliers (Nhà cung cấp) ---
+INSERT INTO suppliers (supplier_id, name, contact, address, rating, lead_time_days) VALUES
+(@Supp_Minerals, N'Công ty Khoáng sản Hà Nam', N'0909123456', N'Phủ Lý, Hà Nam', 4.8, 3);
+
+-- --- Equipment (Thiết bị) ---
+INSERT INTO equipment (equipment_id, name, code, location, last_service) VALUES
+(@Equip_Conveyor, N'Băng tải chuyền Clinker số 1', 'CV-01', N'Khu vực Bãi B sang Silo', '2023-10-01');
+
+-- --- BOMs (Định mức nguyên vật liệu) ---
+-- Công thức: Để làm 1 Tấn Xi măng PCB40 cần 0.8 Tấn Clinker và 0.2 Tấn Thạch cao
+INSERT INTO boms (bom_id, product_id, description) VALUES
+(@Bom_Cement, @Prod_Cement40, N'Công thức phối trộn PCB40 chuẩn');
+
+INSERT INTO bom_lines (bom_id, component_product_id, qty_per) VALUES
+(@Bom_Cement, @Prod_Clinker, 0.8),
+(@Bom_Cement, @Prod_Gypsum, 0.2);
+
+-- --- Sensors (IoT - Quan trọng cho Tech Report) ---
+INSERT INTO sensors (sensor_id, serial, type, unit, location_id, threshold_high, threshold_low, status) VALUES
+(@Sensor_Humid, 'IOT-HUM-001', 'Humidity', '%', @Loc_Yard_Risk, 85.00, 0.00, 'ACTIVE');
+
+-- --- Projects (Quản lý rủi ro) ---
+INSERT INTO projects (project_id, name, start_date, end_date, status) VALUES
+(@Proj_Flood, N'Kế hoạch Ứng phó Mùa mưa bão 2024', '2024-05-01', '2024-10-31', 'IN_PROGRESS');
+
+-- =============================================
+-- 3. INSERT TRANSACTIONAL DATA (Dữ liệu vận hành)
+-- =============================================
+
+-- --- Purchase Orders (Mua hàng) ---
+DECLARE @NewPO uniqueidentifier = NEWID();
+INSERT INTO purchase_orders (po_id, po_number, supplier_id, order_date, expected_date, status, total_amount) VALUES
+(@NewPO, 'PO0001', @Supp_Minerals, GETDATE()-10, GETDATE()-5, 'DONE', 80000000);
+
+INSERT INTO purchase_lines (po_id, product_id, quantity, unit_price, unit) VALUES
+(@NewPO, @Prod_Clinker, 100, 800000, 'TON'); -- Mua 100 tấn Clinker
+
+-- --- Stock Quants (Tồn kho hiện tại) ---
+-- Giả sử đã nhập kho vào Bãi chứa (Vùng nguy hiểm)
+INSERT INTO stock_quants (product_id, location_id, quantity) VALUES
+(@Prod_Clinker, @Loc_Yard_Risk, 80), -- Còn 80 tấn ở bãi ngoài trời
+(@Prod_Cement40, @Loc_Silo, 200);     -- 200 tấn thành phẩm ở Silo
+
+-- --- Sensor Reads & Alerts (Kịch bản IoT cảnh báo) ---
+-- Đọc dữ liệu độ ẩm tăng cao
+INSERT INTO sensor_reads (sensor_id, ts, value) VALUES
+(@Sensor_Humid, GETDATE()-1, 60.5),
+(@Sensor_Humid, GETDATE()-0.5, 75.0),
+(@Sensor_Humid, GETDATE(), 88.5); -- Vượt ngưỡng 85
+
+-- Tạo cảnh báo
+INSERT INTO alerts (sensor_id, ts, value, severity, status, message) VALUES
+(@Sensor_Humid, GETDATE(), 88.5, 'HIGH', 'OPEN', N'CẢNH BÁO: Độ ẩm tại Bãi B vượt ngưỡng an toàn (88.5%). Nguy cơ hỏng Clinker.');
+
+-- --- Tasks (Nhiệm vụ ứng phó) ---
+-- Tạo task di dời hàng do cảnh báo trên
+INSERT INTO tasks (project_id, name, assigned_to, due_date, status) VALUES
+(@Proj_Flood, N'Di dời khẩn cấp Clinker từ Bãi B vào Silo', @UserId_Warehouse, GETDATE()+1, 'PENDING');
+
+-- --- Stock Moves (Lịch sử di chuyển kho) ---
+-- Ví dụ: Di chuyển 20 tấn từ bãi vào sản xuất
+INSERT INTO stock_moves (product_id, from_location_id, to_location_id, quantity, move_type, related_doc) VALUES
+(@Prod_Clinker, @Loc_Yard_Risk, @Loc_Production, 20, 'INTERNAL', 'MO-2023-001');
+
+-- --- Work Orders (Sản xuất) ---
+INSERT INTO work_orders (bom_id, start_date, end_date, status, quantity) VALUES
+(@Bom_Cement, GETDATE()-2, GETDATE()-1, 'DONE', 25); -- Đã sản xuất 25 tấn xi măng
+
+-- --- Maintenance Requests (Bảo trì) ---
+INSERT INTO maint_requests (equipment_id, requested_by, request_date, priority, status, description) VALUES
+(@Equip_Conveyor, @UserId_Warehouse, GETDATE(), 'HIGH', 'NEW', N'Kiểm tra băng tải trước khi vận hành di dời hàng chống lũ');
